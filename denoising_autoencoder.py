@@ -7,3 +7,20 @@ import matplotlib.pyplot as plt
 BATCH_SIZE = 50
 LEARNING_RATE = 1e-3
 EPOCHS = 5
+
+class DenoisingAutoencoder(object):
+	def __init__(self):
+		raise NotImplemented
+
+	def inference(self, x):
+		raise NotImplemented
+
+	def loss(self, output, labels):
+		raise NotImplemented
+
+	def optimize(self, loss):
+		raise NotImplemented
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
+
