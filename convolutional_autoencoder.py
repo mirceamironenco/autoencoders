@@ -6,17 +6,17 @@ import matplotlib.pyplot as plt
 from helpers.utils import print_flags
 
 BATCH_SIZE = 50
-LEARNING_RATE = 1e-3
-EPOCHS = 5
+LEARNING_RATE = 1e-2
+EPOCHS = 10
 
 
 class ConvolutionalAutoencoder(object):
-	def __init__(self, learning_rate=1e-3):
+	def __init__(self, learning_rate=1e-2):
 		self.learning_rate = learning_rate
 
 	def inference(self, x, color_channels=1,
-	              output_sizes=(12, 12),
-	              filter_sizes=(3, 3)):
+	              output_sizes=(16, 16, 16),
+	              filter_sizes=(3, 3, 3)):
 
 		if len(output_sizes) != len(filter_sizes):
 			raise ValueError('Different number of filters specified for inference.')
@@ -28,10 +28,12 @@ class ConvolutionalAutoencoder(object):
 		elif len(x.get_shape()) == 2:
 			# Reshape to (batch_size, width, height, color_channels)
 			square_dim = int(np.sqrt(x.get_shape().as_list()[1]))
-			layer_activation = tf.reshape(x, [-1, square_dim, square_dim, color_channels])
+			x_reshaped = tf.reshape(x, [-1, square_dim, square_dim, color_channels])
 		else:
 			# Dimension is (batch, w, h, d)
-			layer_activation = x
+			x_reshaped = x
+
+		layer_activation = x_reshaped
 
 		# Construct encoder
 		input_depth = color_channels
@@ -84,7 +86,7 @@ class ConvolutionalAutoencoder(object):
 			layer_activation = tf.nn.elu(deconvolution)
 
 		output = layer_activation
-		return output
+		return output, x_reshaped
 
 	def loss(self, outputs, labels):
 		return tf.reduce_sum(tf.square(outputs - labels))
@@ -98,10 +100,9 @@ def main(_):
 
 	input_placeholder = tf.placeholder(tf.float32, shape=[None, 784])
 	model = ConvolutionalAutoencoder(learning_rate=FLAGS.learning_rate)
-	output = model.inference(x=input_placeholder)
-	loss = model.loss(output, input_placeholder)
+	output, label = model.inference(x=input_placeholder)
+	loss = model.loss(output, label)
 	optimization_op = model.optimize(loss)
-
 
 	# Load MNIST data
 	mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
@@ -111,6 +112,36 @@ def main(_):
 	sess = tf.Session()
 	sess.run(tf.global_variables_initializer())
 
+	for epoch in range(FLAGS.epochs):
+		for batch_num in range(mnist.train.num_examples // FLAGS.batch_size):
+			batch_x, _ = mnist.train.next_batch(FLAGS.batch_size)
+			batch_x = np.array([img - mean_image for img in batch_x])
+			_ = sess.run(optimization_op, feed_dict={input_placeholder: batch_x})
+		print('Epoch {} Loss {}'.format(epoch + 1, sess.run(loss,
+		                                                    feed_dict={
+			                                                    input_placeholder: batch_x})))
+
+	n = 10
+	x_test, _ = mnist.test.next_batch(n)
+	x_test = np.array([img - mean_image for img in x_test])
+	recon_imgs = sess.run(output, feed_dict={input_placeholder: x_test})
+
+	plt.figure(figsize=(20, 4))
+	for i in range(n):
+		# Display original
+		ax = plt.subplot(2, n, i + 1)
+		plt.imshow(x_test[i].reshape(28, 28))
+		# plt.gray()
+		ax.get_xaxis().set_visible(False)
+		ax.get_yaxis().set_visible(False)
+
+		# Display reconstruction
+		ax = plt.subplot(2, n, i + 1 + n)
+		plt.imshow(np.reshape(np.reshape(recon_imgs[i], (784,)) + mean_image, (28,28)))
+		# plt.gray()
+		ax.get_xaxis().set_visible(False)
+		ax.get_yaxis().set_visible(False)
+	plt.show()
 
 FLAGS = None
 if __name__ == "__main__":

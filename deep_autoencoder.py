@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
 import matplotlib.pyplot as plt
+from helpers.utils import print_flags
 
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
@@ -55,7 +56,7 @@ class DeepAutoencoder(object):
 		return optimizer.minimize(loss)
 
 def main(_):
-	print_flags()
+	print_flags(FLAGS)
 
 	# MNIST input placeholder
 	input_placeholder = tf.placeholder(tf.float32, shape=[None, 784])
@@ -78,13 +79,9 @@ def main(_):
 
 	for epoch in range(FLAGS.epochs):
 		for batch_number in range(mnist.train.num_examples // FLAGS.batch_size):
-			# Get next batch of data and normalize
 			batch_x, _ = mnist.train.next_batch(FLAGS.batch_size)
-			# batch_x = np.array([img - mean_image for img in batch_x])
 			batch_x = batch_x - mean_image
-			_ = sess.run(optimization_op,
-			                            feed_dict={input_placeholder: batch_x})
-		# Print loss on last batch
+			_ = sess.run(optimization_op, feed_dict={input_placeholder: batch_x})
 		print('Epoch {} Loss {}'.format(epoch + 1, sess.run(loss,
 		                                                feed_dict={input_placeholder: batch_x})))
 
@@ -110,9 +107,6 @@ def main(_):
 		ax.get_yaxis().set_visible(False)
 	plt.show()
 
-def print_flags():
-	for key, value in vars(FLAGS).items():
-		print("{}: {}".format(key, str(value)))
 
 FLAGS = None
 if __name__ == '__main__':
