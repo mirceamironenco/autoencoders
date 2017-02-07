@@ -30,15 +30,29 @@ class VariationalAutoencoder(object):
 			[728, 512, 256, 64, 256, 512, 728].
 			- non_linear. Non-linear activation functions used by the networks.
 		"""
+		assert len(architecture) > 1, "Please specify at least input and latent size."
+		self.x_in = tf.placeholder(tf.float32, shape=[None, architecture[0]])
 		self.learning_rate = learning_rate
 		self.architecture = architecture
 		self.batch_size = batch_size
 		self.non_linear = non_linear
 		self.squashing = squashing
 		self.latent_size = architecture[-1]
+		self._sess = tf.Session()
+		self.decoder_vars = {}
 
-	def construct_encoding(self, x):
-		input = x
+		# Construct graph operations and keep reference to nodes.
+		self.x_rec, self.z_mu, self.z_log_sigma, self.x_gen, self.z_gen = self.inference()
+		self.vae_loss = self.loss(input_reconst=self.x_rec,
+		                          z_mu=self.z_mu,
+		                          z_log_sigma=self.z_log_sigma)
+		self.train_op = self.optimize(self.vae_loss)
+
+		# Initialize session to run operations in.
+		self._sess.run(tf.initialize_all_variables())
+
+	def construct_encoding(self):
+		input = self.x_in
 
 		for dim_i, layer_size in enumerate(self.architecture[1:-1]):
 			# Weights init
@@ -50,19 +64,23 @@ class VariationalAutoencoder(object):
 
 		return input, layer_size
 
-	def construct_decoding(self, z):
+	def construct_decoding(self, z, reuse=False):
 		input = z
 		in_size = self.latent_size
-		for layer_size in self.architecture[::-1][1:-1]:
-			W, b = he_xavier(in_size=in_size, out_size=layer_size)
+		for dim_i, layer_size in enumerate(self.architecture[::-1][1:-1]):
+			if reuse: # TO-DO: Change to tf variable reuse instead of dict.
+				W, b = self.decoder_vars[dim_i]
+			else:
+				W, b = he_xavier(in_size=in_size, out_size=layer_size)
+				self.decoder_vars[dim_i] = (W,b)
 			layer_activ = self.non_linear(tf.add(tf.matmul(input, W), b))
 			input, in_size = layer_activ, layer_size
 
 		return input, layer_size
 
-	def inference(self, x):
+	def inference(self):
 		# Compute encoding / recognition q(z|x)
-		h_encoded, h_size = self.construct_encoding(x)
+		h_encoded, h_size = self.construct_encoding()
 
 		# Compute latent distribution parameters
 		# z ~ N(z_mean, exp(z_log_sigma)^2)
@@ -71,11 +89,11 @@ class VariationalAutoencoder(object):
 		W_sigma, b_sigma = he_xavier(in_size=h_size,
 		                             out_size=self.latent_size)
 
-		z_mean = tf.add(tf.matmul(h_encoded, W_mean), b_mean)
+		z_mu = tf.add(tf.matmul(h_encoded, W_mean), b_mean)
 		z_log_sigma = tf.add(tf.matmul(h_encoded, W_sigma), b_sigma)
 
 		# Sample from the latent distribution to compute reconstruction
-		z = VariationalAutoencoder.sample_normal(mu=z_mean, log_sigma=z_log_sigma)
+		z = self.sample_normal(mu=z_mu, log_sigma=z_log_sigma)
 
 		# Final decoding layer
 		h_final, final_size = self.construct_decoding(z)
@@ -84,15 +102,22 @@ class VariationalAutoencoder(object):
 		W_x, b_x = he_xavier(in_size=final_size, out_size=self.architecture[0])
 		x_reconstructed = self.squashing(tf.add(tf.matmul(h_final, W_x), b_x))
 
-		return x_reconstructed, z_mean, z_log_sigma
+		# Generating new points from latent space operation
+		# Define z sample to be used for generation, default from prior z ~ N(0,I)
+		z_gen = tf.placeholder_with_default(tf.random_normal([1, self.latent_size]),
+		                                       shape=[None, self.latent_size])
+		h, f = self.construct_decoding(z_gen, reuse=True)
+		x_gen = self.squashing(tf.add(tf.matmul(h, W_x), b_x))  # Not used for training.
 
-	def loss(self, input_reconst, input_original, z_mean, z_log_sigma):
+		return x_reconstructed, z_mu, z_log_sigma, x_gen, z_gen
+
+	def loss(self, input_reconst, z_mu, z_log_sigma):
 		"""
 		Compute total loss
 		"""
 		reconst_loss = VariationalAutoencoder.cross_entropy(input_reconst,
-		                                                           input_original)
-		divergence_loss = VariationalAutoencoder.kullback_leibler(mu=z_mean,
+		                                                           self.x_in)
+		divergence_loss = VariationalAutoencoder.kullback_leibler(mu=z_mu,
 		                                                          log_sigma=z_log_sigma)
 
 		return tf.reduce_mean(reconst_loss + divergence_loss, name="vae_loss")
@@ -106,8 +131,26 @@ class VariationalAutoencoder(object):
 		optimize_op = optimizer.apply_gradients(clipped, name="cost_minimization")
 		return optimize_op
 
-	@staticmethod
-	def sample_normal(mu, log_sigma):
+	def train_step(self, x):
+		_, loss = self._sess.run([self.train_op, self.vae_loss], feed_dict={self.x_in: x})
+		return loss
+
+	def encode_input(self, x):
+		return self._sess.run([self.z_mu, self.z_log_sigma], feed_dict={self.x_in: x})
+
+	def decode_input(self, z_sample=None):
+		# if z_sample=None, we simply use default from prior z ~ N(0,I)
+		# if z_sample is tensor, first obtain numpy value, otherwise use it directly.
+		if z_sample:
+			z_sample = self._sess.run(z_sample) if hasattr(z_sample, "eval") else z_sample
+
+		return self._sess.run(self.x_gen, feed_dict={self.z_gen: z_sample})
+
+	def variational_ae(self, x):
+		z = self.sample_normal(*self.encode_input(x))
+		return self.decode_input(z_sample=z)
+
+	def sample_normal(self, mu, log_sigma):
 		"""
 		Re-parametrization trick
 		z = z_mean + exp(z_log_sigma) * epsilon
@@ -130,7 +173,6 @@ class VariationalAutoencoder(object):
 
 
 def main(_):
-
 	# Load MNIST data
 	mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
@@ -140,7 +182,8 @@ def main(_):
 	                               batch_size=FLAGS.batch_size,
 	                               architecture=[784, 512, 512, 2])
 
-	reconstruction = model.inference(input)
+	# Run training
+
 
 FLAGS = None
 if __name__ == "__main__":
