@@ -176,9 +176,11 @@ class VariationalAutoencoder(object):
 def main(_):
 	print_flags(FLAGS)
 	mnist = load_mnist()
+
+	z_dim = FLAGS.z_dim
 	vae = VariationalAutoencoder(learning_rate=FLAGS.learning_rate,
 	                               batch_size=FLAGS.batch_size,
-	                               architecture=[784, 512, 512, 2])
+	                               architecture=[784, 512, 512, z_dim])
 
 	print("Started training {}".format(datetime.now().isoformat()[11:]))
 	# Run training
@@ -205,21 +207,23 @@ def main(_):
 	plt.tight_layout()
 	plt.savefig("vae_digits.png")
 
-	x_sample, y_sample = mnist.test.next_batch(5000)
-	z_mu, _ = vae.encode_input(x_sample)
-	plt.figure(figsize=(8, 6))
-	plt.scatter(z_mu[:, 0], z_mu[:, 1], c=np.argmax(y_sample, 1))
-	plt.colorbar()
-	plt.grid()
-	plt.savefig("vae_latent.png")
+	if z_dim == 2:
+		x_sample, y_sample = mnist.test.next_batch(5000)
+		z_mu, _ = vae.encode_input(x_sample)
+		plt.figure(figsize=(8, 6))
+		plt.scatter(z_mu[:, 0], z_mu[:, 1], c=np.argmax(y_sample, 1))
+		plt.colorbar()
+		plt.grid()
+		plt.savefig("vae_latent.png")
 
 
 FLAGS = None
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE)
-	parser.add_argument('--batch_size', type=int, default=BATCH_SIZE)
-	parser.add_argument('--epochs', type=int, default=EPOCHS)
+	parser.add_argument("--learning_rate", type=float, default=LEARNING_RATE)
+	parser.add_argument("--batch_size", type=int, default=BATCH_SIZE)
+	parser.add_argument("--epochs", type=int, default=EPOCHS)
+	parser.add_argument("--z_dim", type=int, default=2)
 	FLAGS, _ = parser.parse_known_args()
 
 	tf.app.run()
