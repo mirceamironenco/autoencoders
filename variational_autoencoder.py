@@ -104,6 +104,7 @@ class VariationalAutoencoder(object):
 		clipped = [(tf.clip_by_value(gradient, -6.0, 6.0), tvar)
 		           for gradient, tvar in grads_and_vars]
 		optimize_op = optimizer.apply_gradients(clipped, name="cost_minimization")
+		return optimize_op
 
 	@staticmethod
 	def sample_normal(mu, log_sigma):
