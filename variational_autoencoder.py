@@ -1,3 +1,4 @@
+from datetime import datetime
 import argparse
 import tensorflow as tf
 import numpy as np
@@ -8,7 +9,7 @@ from helpers.utils import print_flags, load_mnist
 
 BATCH_SIZE = 128
 LEARNING_RATE = 1e-3
-EPOCHS = 2
+EPOCHS = 75
 
 class VariationalAutoencoder(object):
 	"""
@@ -141,7 +142,7 @@ class VariationalAutoencoder(object):
 	def decode_input(self, z_sample=None):
 		# if z_sample=None, we simply use default from prior z ~ N(0,I)
 		# if z_sample is tensor, first obtain numpy value, otherwise use it directly.
-		if z_sample:
+		if z_sample is not None:
 			z_sample = self._sess.run(z_sample) if hasattr(z_sample, "eval") else z_sample
 
 		return self._sess.run(self.x_gen, feed_dict={self.z_gen: z_sample})
@@ -179,12 +180,39 @@ def main(_):
 	                               batch_size=FLAGS.batch_size,
 	                               architecture=[784, 512, 512, 2])
 
+	print("Started training {}".format(datetime.now().isoformat()[11:]))
 	# Run training
 	for epoch in range(FLAGS.epochs):
 		for batch in range(mnist.train.num_examples // FLAGS.batch_size):
 			batch_x, _ = mnist.train.next_batch(FLAGS.batch_size)
 			_ = vae.train_step(x=batch_x)
-		print('Epoch {} Loss {}'.format(epoch + 1, vae.train_step(x=batch_x)))
+		print("Epoch {} Loss {}".format(epoch + 1, vae.train_step(x=batch_x)))
+	print("Training finished, {}.".format(datetime.now().isoformat()[11:]))
+
+	x_sample = mnist.test.next_batch(100)[0]
+	x_rec = vae.variational_ae(x_sample)
+
+	plt.figure(figsize=(8, 12))
+	for i in range(5):
+		plt.subplot(5, 2, 2 * i + 1)
+		plt.imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
+		plt.title("Test input")
+		plt.colorbar()
+		plt.subplot(5, 2, 2 * i + 2)
+		plt.imshow(x_rec[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
+		plt.title("Reconstruction")
+		plt.colorbar()
+	plt.tight_layout()
+	plt.savefig("vae_digits.png")
+
+	x_sample, y_sample = mnist.test.next_batch(5000)
+	z_mu, _ = vae.encode_input(x_sample)
+	plt.figure(figsize=(8, 6))
+	plt.scatter(z_mu[:, 0], z_mu[:, 1], c=np.argmax(y_sample, 1))
+	plt.colorbar()
+	plt.grid()
+	plt.savefig("vae_latent.png")
+
 
 FLAGS = None
 if __name__ == "__main__":
