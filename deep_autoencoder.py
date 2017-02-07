@@ -1,9 +1,9 @@
 import argparse
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
 import matplotlib.pyplot as plt
-from helpers.utils import print_flags
+
+from helpers.utils import print_flags, load_mnist
 
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-3
@@ -70,7 +70,7 @@ def main(_):
 	optimization_op = model.optimize(loss)
 
 	# Load MNIST data
-	mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+	mnist = load_mnist()
 	X_train = mnist.train.images
 	mean_image = np.mean(X_train, axis=0)
 
