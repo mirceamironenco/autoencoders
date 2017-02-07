@@ -84,13 +84,26 @@ class VariationalAutoencoder(object):
 		W_x, b_x = he_xavier(in_size=final_size, out_size=self.architecture[0])
 		x_reconstructed = self.squashing(tf.add(tf.matmul(h_final, W_x), b_x))
 
-		return x_reconstructed
+		return x_reconstructed, z_mean, z_log_sigma
 
-	def loss(self, outputs, labels):
-		raise NotImplemented
+	def loss(self, input_reconst, input_original, z_mean, z_log_sigma):
+		"""
+		Compute total loss
+		"""
+		reconst_loss = VariationalAutoencoder.cross_entropy(input_reconst,
+		                                                           input_original)
+		divergence_loss = VariationalAutoencoder.kullback_leibler(mu=z_mean,
+		                                                          log_sigma=z_log_sigma)
+
+		return tf.reduce_mean(reconst_loss + divergence_loss, name="vae_loss")
 
 	def optimize(self, loss):
-		raise NotImplemented
+		optimizer = tf.train.AdamOptimizer(self.learning_rate)
+		tvars = tf.trainable_variables()
+		grads_and_vars = optimizer.compute_gradients(loss=loss, var_list=tvars)
+		clipped = [(tf.clip_by_value(gradient, -6.0, 6.0), tvar)
+		           for gradient, tvar in grads_and_vars]
+		optimize_op = optimizer.apply_gradients(clipped, name="cost_minimization")
 
 	@staticmethod
 	def sample_normal(mu, log_sigma):
@@ -100,6 +113,20 @@ class VariationalAutoencoder(object):
 		"""
 		epsilon = tf.random_normal(tf.shape(log_sigma), name="epsilon")
 		return mu + tf.exp(log_sigma) * epsilon
+
+	@staticmethod
+	def cross_entropy(res, label, offset=1e-9):
+		res_ = tf.clip_by_value(res, offset, 1-offset)
+		return -tf.reduce_sum(label * tf.log(res_) + (1 - label) * tf.log(1 - res_), 1)
+
+	@staticmethod
+	def kullback_leibler(mu, log_sigma):
+		"""
+		Kullback-Leibler divergence KL(q||p)
+		"""
+		return -0.5 * tf.reduce_sum(1 + 2 * log_sigma - tf.square(mu)
+		                            - tf.exp(2 * log_sigma), 1)
+
 
 def main(_):
 
