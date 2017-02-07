@@ -3,12 +3,12 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tensorflow.examples.tutorials.mnist import input_data
 from helpers.initializers import he_xavier
+from helpers.utils import print_flags, load_mnist
 
 BATCH_SIZE = 128
 LEARNING_RATE = 1e-3
-EPOCHS = 10
+EPOCHS = 2
 
 class VariationalAutoencoder(object):
 	"""
@@ -37,7 +37,7 @@ class VariationalAutoencoder(object):
 		self.batch_size = batch_size
 		self.non_linear = non_linear
 		self.squashing = squashing
-		self.latent_size = architecture[-1]
+		self.z_size = architecture[-1]
 		self._sess = tf.Session()
 		self.decoder_vars = {}
 
@@ -66,7 +66,7 @@ class VariationalAutoencoder(object):
 
 	def construct_decoding(self, z, reuse=False):
 		input = z
-		in_size = self.latent_size
+		in_size = self.z_size
 		for dim_i, layer_size in enumerate(self.architecture[::-1][1:-1]):
 			if reuse: # TO-DO: Change to tf variable reuse instead of dict.
 				W, b = self.decoder_vars[dim_i]
@@ -85,9 +85,9 @@ class VariationalAutoencoder(object):
 		# Compute latent distribution parameters
 		# z ~ N(z_mean, exp(z_log_sigma)^2)
 		W_mean, b_mean = he_xavier(in_size=h_size,
-		                 out_size=self.latent_size)
+		                           out_size=self.z_size)
 		W_sigma, b_sigma = he_xavier(in_size=h_size,
-		                             out_size=self.latent_size)
+		                             out_size=self.z_size)
 
 		z_mu = tf.add(tf.matmul(h_encoded, W_mean), b_mean)
 		z_log_sigma = tf.add(tf.matmul(h_encoded, W_sigma), b_sigma)
@@ -104,8 +104,8 @@ class VariationalAutoencoder(object):
 
 		# Generating new points from latent space operation
 		# Define z sample to be used for generation, default from prior z ~ N(0,I)
-		z_gen = tf.placeholder_with_default(tf.random_normal([1, self.latent_size]),
-		                                       shape=[None, self.latent_size])
+		z_gen = tf.placeholder_with_default(tf.random_normal([1, self.z_size]),
+		                                    shape=[None, self.z_size])
 		h, f = self.construct_decoding(z_gen, reuse=True)
 		x_gen = self.squashing(tf.add(tf.matmul(h, W_x), b_x))  # Not used for training.
 
@@ -126,7 +126,7 @@ class VariationalAutoencoder(object):
 		optimizer = tf.train.AdamOptimizer(self.learning_rate)
 		tvars = tf.trainable_variables()
 		grads_and_vars = optimizer.compute_gradients(loss=loss, var_list=tvars)
-		clipped = [(tf.clip_by_value(gradient, -6.0, 6.0), tvar)
+		clipped = [(tf.clip_by_value(gradient, -5, 5), tvar)
 		           for gradient, tvar in grads_and_vars]
 		optimize_op = optimizer.apply_gradients(clipped, name="cost_minimization")
 		return optimize_op
@@ -159,7 +159,7 @@ class VariationalAutoencoder(object):
 		return mu + tf.exp(log_sigma) * epsilon
 
 	@staticmethod
-	def cross_entropy(res, label, offset=1e-9):
+	def cross_entropy(res, label, offset=1e-7):
 		res_ = tf.clip_by_value(res, offset, 1-offset)
 		return -tf.reduce_sum(label * tf.log(res_) + (1 - label) * tf.log(1 - res_), 1)
 
@@ -173,17 +173,18 @@ class VariationalAutoencoder(object):
 
 
 def main(_):
-	# Load MNIST data
-	mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-
-	input = tf.placeholder(tf.float32, shape=[None, 784])
-
-	model = VariationalAutoencoder(learning_rate=FLAGS.learning_rate,
+	print_flags(FLAGS)
+	mnist = load_mnist()
+	vae = VariationalAutoencoder(learning_rate=FLAGS.learning_rate,
 	                               batch_size=FLAGS.batch_size,
 	                               architecture=[784, 512, 512, 2])
 
 	# Run training
-
+	for epoch in range(FLAGS.epochs):
+		for batch in range(mnist.train.num_examples // FLAGS.batch_size):
+			batch_x, _ = mnist.train.next_batch(FLAGS.batch_size)
+			_ = vae.train_step(x=batch_x)
+		print('Epoch {} Loss {}'.format(epoch + 1, vae.train_step(x=batch_x)))
 
 FLAGS = None
 if __name__ == "__main__":
