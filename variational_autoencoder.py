@@ -191,30 +191,49 @@ def main(_):
 		print("Epoch {} Loss {}".format(epoch + 1, vae.train_step(x=batch_x)))
 	print("Training finished, {}.".format(datetime.now().isoformat()[11:]))
 
-	x_sample = mnist.test.next_batch(100)[0]
-	x_rec = vae.variational_ae(x_sample)
+	if z_dim != 2:
+		x_sample = mnist.test.next_batch(100)[0]
+		x_rec = vae.variational_ae(x_sample)
 
-	plt.figure(figsize=(8, 12))
-	for i in range(5):
-		plt.subplot(5, 2, 2 * i + 1)
-		plt.imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
-		plt.title("Test input")
-		plt.colorbar()
-		plt.subplot(5, 2, 2 * i + 2)
-		plt.imshow(x_rec[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
-		plt.title("Reconstruction")
-		plt.colorbar()
-	plt.tight_layout()
-	plt.savefig("vae_digits.png")
-
-	if z_dim == 2:
+		plt.figure(figsize=(8, 12))
+		for i in range(5):
+			plt.subplot(5, 2, 2 * i + 1)
+			plt.imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
+			plt.title("Test input")
+			plt.colorbar()
+			plt.subplot(5, 2, 2 * i + 2)
+			plt.imshow(x_rec[i].reshape(28, 28), vmin=0, vmax=1, cmap="gray")
+			plt.title("Reconstruction")
+			plt.colorbar()
+		plt.tight_layout()
+		plt.savefig("vae_digits.png")
+	else:
 		x_sample, y_sample = mnist.test.next_batch(5000)
 		z_mu, _ = vae.encode_input(x_sample)
 		plt.figure(figsize=(8, 6))
-		plt.scatter(z_mu[:, 0], z_mu[:, 1], c=np.argmax(y_sample, 1))
+		plt.scatter(z_mu[:, 0], z_mu[:, 1], c=np.argmax(y_sample, 1),
+		            cmap=plt.get_cmap("jet"))
 		plt.colorbar()
 		plt.grid()
 		plt.savefig("vae_latent.png")
+
+		nx = ny = 20
+		x_values = np.linspace(-3, 3, nx)
+		y_values = np.linspace(-3, 3, ny)
+
+		canvas = np.empty((28 * ny, 28 * nx))
+		for i, yi in enumerate(x_values):
+			for j, xi in enumerate(y_values):
+				z_mu = np.array([[xi, yi]] * vae.batch_size)
+				x_mean = vae.decode_input(z_mu)
+				canvas[(nx - i - 1) * 28:(nx - i) * 28, j * 28:(j + 1) * 28] = x_mean[
+					0].reshape(28, 28)
+
+		plt.figure(figsize=(8, 10))
+		Xi, Yi = np.meshgrid(x_values, y_values)
+		plt.imshow(canvas, origin="upper", cmap="gray")
+		plt.tight_layout()
+		plt.savefig("latent_space.png")
 
 
 FLAGS = None
